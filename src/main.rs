@@ -1,11 +1,13 @@
 use console;
 use std::io::{self, stdin, Write};
 use std::collections::HashMap;
+use std::hash::Hash;
 use crate::builtin_words::ACCEPTABLE;
 
 mod builtin_words;
 
-fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument: &mut String) {
+fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument: &mut String,
+              difficult_on: &mut i32, print_stats: &mut i32) {
     for arg in std::env::args() {
         if *meet_word_argument == 1 {
             *word_argument = arg.clone();
@@ -14,6 +16,10 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
             *meet_word_argument = 1;
         } else if arg == String::from("-r") || arg == String::from("--random") {
             *random_mode = 1;
+        } else if arg == String::from("-D") || arg == String::from("--difficult") {
+            *difficult_on = 1;
+        } else if arg == String::from("-t") || arg == String::from("--stats") {
+            *print_stats = 1;
         }
     }
 }
@@ -30,6 +36,40 @@ fn print_result(user_status: &Vec<char>, keyboard_status: &Vec<char>) {
         io::stdout().flush().unwrap();
     }
     println!("");
+}
+
+fn update_keyboard_status(keyboard_status: &mut Vec<char>, user_status: &Vec<char>,
+                          guess_chars: &Vec<char>, scores: &HashMap<char, i32>) {
+    for i in 0..5 {
+        let idx = guess_chars[i] as usize - 'a' as usize;
+        if scores.get(&keyboard_status[idx]) < scores.get(&user_status[i]) {
+            keyboard_status[idx] = user_status[i];
+        }
+    }
+}
+
+fn make_yellow(user_status: &mut Vec<char>, colored: &mut Vec<i32>, guess_chars: &Vec<char>,
+               answer_count: &Vec<i32>) {
+    for i in 0..5 {
+        let idx = guess_chars[i] as usize - 'a' as usize;
+        if user_status[i] != 'G' {
+            if answer_count[idx] > 0 && colored[idx] < answer_count[idx] {
+                user_status[i] = 'Y';
+                colored[idx] += 1;
+            }
+        }
+    }
+}
+
+fn make_green(user_status: &mut Vec<char>, colored: &mut Vec<i32>, guess_chars: &Vec<char>,
+              answer_chars: &Vec<char>) {
+    for i in 0..5 {
+        user_status[i] = if guess_chars[i] == answer_chars[i] {
+            let idx = guess_chars[i] as usize - 'a' as usize;
+            colored[idx] += 1;
+            'G'
+        } else { 'R' };
+    }
 }
 
 /// The main function for the Wordle game, implement your own logic here
@@ -64,6 +104,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut random_mode = 0;
     let mut word_argument = String::new();
     let mut keyboard_status: Vec<char> = vec!['X'; 26];
+    let mut difficult_on = 0;
+    let mut print_stats = 0;
 
     let mut scores = HashMap::new();
     scores.insert('G', 10);
@@ -71,7 +113,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     scores.insert('R', 2);
     scores.insert('X', 1);
 
-    parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument);
+    parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument, &mut difficult_on,
+               &mut print_stats);
 
     if meet_word_argument == 1 {
         return Err(Box::from("Error! missing word argument"));
@@ -116,32 +159,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut user_status: Vec<char> = vec!['X'; 5];
 
         /* Green */
-        for i in 0..5 {
-            user_status[i] = if guess_chars[i] == answer_chars[i] {
-                let idx = guess_chars[i] as usize - 'a' as usize;
-                colored[idx] += 1;
-                'G'
-            } else { 'R' };
-        }
+        make_green(&mut user_status, &mut colored, &guess_chars, &answer_chars);
 
         /* Yellow */
-        for i in 0..5 {
-            let idx = guess_chars[i] as usize - 'a' as usize;
-            if user_status[i] != 'G' {
-                if answer_count[idx] > 0 && colored[idx] < answer_count[idx] {
-                    user_status[i] = 'Y';
-                    colored[idx] += 1;
-                }
-            }
-        }
+        make_yellow(&mut user_status, &mut colored, &guess_chars, &answer_count);
 
         /* Keyboard status */
-        for i in 0..5 {
-            let idx = guess_chars[i] as usize - 'a' as usize;
-            if scores.get(&keyboard_status[idx]) < scores.get(&user_status[i]) {
-               keyboard_status[idx] = user_status[i];
-            }
-        }
+        update_keyboard_status(&mut keyboard_status, &user_status, &guess_chars, &scores);
 
         print_result(&user_status, &keyboard_status);
 
@@ -152,7 +176,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !is_tty {
-        // println!("{total_guessing_count}");
         if success == 0 {
             println!("FAILED {}", answer_word.to_uppercase());
         } else {
