@@ -2,6 +2,7 @@ use console;
 use std::io::{self, stdin, Write};
 use std::collections::HashMap;
 use std::hash::Hash;
+use log::info;
 use crate::builtin_words::ACCEPTABLE;
 
 mod builtin_words;
@@ -135,6 +136,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut guessing_history : Vec<String> = Vec::new();
     let mut success = 0;
 
+    let mut last_user_guess_status = vec!['X'; 5];
+    let mut last_user_guess_word = vec!['X'; 5];
     let answer_chars: Vec<char> = answer_word.chars().collect();
     let mut answer_count: Vec<i32> = vec![0; 26];
     for c in answer_chars.iter() {
@@ -150,9 +153,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        guessing_history.push(user_guess.clone());
-        total_guessing_count += 1;
-
         let guess_chars: Vec<char> = user_guess.chars().collect();
         let mut colored: Vec<i32> = vec![0; 26];
         /* Update keyboard status */
@@ -164,10 +164,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         /* Yellow */
         make_yellow(&mut user_status, &mut colored, &guess_chars, &answer_count);
 
+        let mut fail_difficult = 0;
+        if difficult_on == 1 {
+            /* Must use all green */
+            for i in 0..5 {
+               if last_user_guess_status[i] == 'G' && user_status[i] != 'G' {
+                   // println!("Error at here: 172, i={i}");
+                   fail_difficult = 1;
+                   break;
+               }
+            }
+
+            /* Must use all yellow */
+            /* For a certain char C, the yellow number of C + green number of C >= last time total sum */
+
+            if total_guessing_count >= 1 {
+                let mut last_cnt = vec![0; 26];
+                let mut curr_cnt = vec![0; 26];
+
+                for i in 0..5 {
+                    let idx_1 = last_user_guess_word[i] as usize - 'a' as usize;
+                    let idx_2 = guess_chars[i] as usize - 'a' as usize;
+                    last_cnt[idx_1] += if last_user_guess_status[i] == 'Y' || last_user_guess_status[i] == 'G' { 1 } else { 0 };
+                    curr_cnt[idx_2] += if user_status[i] == 'Y' || user_status[i] == 'G' { 1 } else { 0 };
+                }
+
+                // println!("Last user status: {:#?}", last_user_guess_status);
+                // println!("Curr user status: {:#?}", user_status);
+                // println!("Last: {:#?}", last_cnt);
+                // println!("Curr: {:#?}", curr_cnt);
+
+                for i in 0..26 {
+                    if last_cnt[i] > curr_cnt[i] {
+                        fail_difficult = 1;
+                        break;
+                    }
+                }
+            }
+
+            if fail_difficult == 1 {
+                println!("INVALID");
+                continue;
+            }
+        }
+
+
+
         /* Keyboard status */
         update_keyboard_status(&mut keyboard_status, &user_status, &guess_chars, &scores);
 
         print_result(&user_status, &keyboard_status);
+
+        guessing_history.push(user_guess.clone());
+        total_guessing_count += 1;
+
+        last_user_guess_status = user_status.clone();
+        last_user_guess_word = guess_chars.clone();
 
         if user_guess == answer_word {
             success = 1;
