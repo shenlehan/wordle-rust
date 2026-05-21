@@ -33,38 +33,45 @@ fn read_word_list(path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>>
     Ok(words)
 }
 
-fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument: &mut String,
+fn parse_args(random_mode: &mut i32, word_argument: &mut String,
               difficult_on: &mut i32, print_stats: &mut i32,
-              meet_day_argument: &mut i32, day: &mut usize,
-              meet_seed_argument: &mut i32, seed: &mut u64,
-              meet_f_argument: &mut i32, final_set: &mut String,
-              meet_accept_argument: &mut i32, acceptable_set: &mut String,
+              day: &mut usize,
+              seed: &mut u64,
+              final_set: &mut String,
+              acceptable_set: &mut String,
               need_yn: &mut i32, has_word_arg: &mut i32,
               has_day_arg: &mut i32, has_seed_arg: &mut i32,
               has_accept: &mut i32,
-              has_final: &mut i32) {
+              has_final: &mut i32) -> Result<(), Box<dyn std::error::Error>> {
+
+    let mut meet_word_argument = 0;
+    let mut meet_day_argument = 0;
+    let mut meet_seed_argument = 0;
+    let mut meet_f_argument = 0;
+    let mut meet_accept_argument = 0;
+
     for arg in std::env::args() {
-        if *meet_word_argument == 1 {
+        if meet_word_argument == 1 {
             *word_argument = arg.clone();
-            *meet_word_argument = 0;
-        } else if *meet_day_argument == 1 {
+            meet_word_argument = 0;
+        } else if meet_day_argument == 1 {
             *day = arg.clone().parse().unwrap();
-            *meet_day_argument = 0;
-        } else if *meet_seed_argument == 1 {
+            meet_day_argument = 0;
+        } else if meet_seed_argument == 1 {
             *seed = arg.clone().parse().unwrap();
-            *meet_seed_argument = 0;
-        } else if *meet_f_argument == 1 {
-            *meet_f_argument = 0;
+            meet_seed_argument = 0;
+        } else if meet_f_argument == 1 {
             *final_set = arg.clone();
             *has_final = 1;
-        } else if *meet_accept_argument == 1 {
-            *meet_accept_argument = 0;
+            meet_f_argument = 0;
+        } else if meet_accept_argument == 1 {
             *acceptable_set = arg.clone();
             *has_accept = 1;
+            meet_accept_argument = 0;
         } else if arg == String::from("-w") || arg == String::from("--word") {
-            *meet_word_argument = 1;
             *has_word_arg = 1;
             *need_yn = 0;
+            meet_word_argument = 1;
         } else if arg == String::from("-r") || arg == String::from("--random") {
             *random_mode = 1;
         } else if arg == String::from("-D") || arg == String::from("--difficult") {
@@ -72,17 +79,47 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
         } else if arg == String::from("-t") || arg == String::from("--stats") {
             *print_stats = 1;
         } else if arg == String::from("-d") || arg == String::from("--day") {
-            *meet_day_argument = 1;
+            meet_day_argument = 1;
             *has_day_arg = 1;
         } else if arg == String::from("-s") || arg == String::from("--seed") {
-            *meet_seed_argument = 1;
+            meet_seed_argument = 1;
             *has_seed_arg = 1;
         } else if arg == String::from("-f") || arg == String::from("--final-set") {
-            *meet_f_argument = 1;
+            meet_f_argument = 1;
         } else if arg == String::from("-a") || arg == String::from("--acceptable-set") {
-            *meet_accept_argument = 1;
+            meet_accept_argument = 1;
         }
     }
+
+    if meet_word_argument == 1 {
+        return Err(Box::from("Error! Missing word argument"));
+    }
+
+    if meet_day_argument == 1 {
+        return Err(Box::from("Error! Missing day argument"));
+    }
+
+    if meet_seed_argument == 1 {
+        return Err(Box::from("Error! Missing seed argument"));
+    }
+
+    if meet_accept_argument == 1 {
+        return Err(Box::from("Error! Missing acceptable-set argument"));
+    }
+
+    if meet_f_argument == 1 {
+        return Err(Box::from("Error! Missing final-set argument"));
+    }
+
+    if *has_word_arg == 1 && (*random_mode == 1 || *has_day_arg == 1 || *has_seed_arg == 1) {
+        return Err(Box::from("Error! conflict arguments"));
+    }
+
+    if *random_mode == 0 && (*has_day_arg == 1 || *has_seed_arg == 1) {
+        return Err(Box::from("Error! seed/day require random mode"));
+    }
+
+    Ok(())
 }
 
 fn print_result(user_status: &Vec<char>, keyboard_status: &Vec<char>) {
@@ -196,20 +233,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_success_guess_try = 0.0;
 
     let mut guess_frequency: HashMap<String, i32> = HashMap::new();
-    let mut meet_word_argument = 0;
+
     let mut random_mode = 0;
     let mut word_argument = String::new();
 
     let mut difficult_on = 0;
     let mut print_stats = 0;
-    let mut meet_day_argument = 0;
     let mut day: usize = 0;
-    let mut meet_seed_argument = 0;
     let mut seed: u64 = 0;
     let mut final_set = String::new();
-    let mut meet_f_argument = 0;
     let mut acceptable_set = String::new();
-    let mut meet_accept_argument = 0;
 
     let mut need_input_answer = 0;
     let mut need_yn = 1;
@@ -219,38 +252,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut has_final = 0;
     let mut has_accept = 0;
 
-    parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument, &mut difficult_on,
-               &mut print_stats, &mut meet_day_argument, &mut day, &mut meet_seed_argument, &mut seed,
-               &mut meet_f_argument, &mut final_set, &mut meet_accept_argument, &mut acceptable_set,
-               &mut need_yn, &mut has_word_arg, &mut has_day_arg, &mut has_seed_arg, &mut has_accept, &mut has_final);
-
-    if meet_word_argument == 1 {
-        return Err(Box::from("Error! Missing word argument"));
-    }
-
-    if meet_day_argument == 1 {
-        return Err(Box::from("Error! Missing day argument"));
-    }
-
-    if meet_seed_argument == 1 {
-        return Err(Box::from("Error! Missing seed argument"));
-    }
-
-    if meet_accept_argument == 1 {
-        return Err(Box::from("Error! Missing acceptable-set argument"));
-    }
-
-    if meet_f_argument == 1 {
-        return Err(Box::from("Error! Missing final-set argument"));
-    }
-
-    if has_word_arg == 1 && (random_mode == 1 || has_day_arg == 1 || has_seed_arg == 1) {
-        return Err(Box::from("Error! conflict arguments"));
-    }
-
-    if random_mode == 0 && (has_day_arg == 1 || has_seed_arg == 1) {
-        return Err(Box::from("Error! seed/day require random mode"));
-    }
+    parse_args(&mut random_mode, &mut word_argument, &mut difficult_on,
+               &mut print_stats, &mut day, &mut seed,
+               &mut final_set, &mut acceptable_set,
+               &mut need_yn, &mut has_word_arg, &mut has_day_arg,
+               &mut has_seed_arg, &mut has_accept, &mut has_final)?;
 
     /* Create FINAL and ACCEPTABLE source */
     let mut final_words: Vec<String> = Vec::new();
@@ -391,8 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut yn = String::new();
             let result = io::stdin().read_line(&mut yn);
             match result {
-                // Err(_) => panic!("Fail to read line!"),
-                Err(_) => (),
+                Err(_) => panic!("Fail to read line!"),
                 Ok(0) => break,
                 Ok(_) => {
                     if yn.trim() == "N" {
