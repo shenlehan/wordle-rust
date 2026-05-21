@@ -25,7 +25,8 @@ fn top_n_keys<K: Clone + Ord, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
 
 fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument: &mut String,
               difficult_on: &mut i32, print_stats: &mut i32, meet_day_argument: &mut i32, day: &mut usize,
-              meet_seed_argument: &mut i32, seed: &mut u64) {
+              meet_seed_argument: &mut i32, seed: &mut u64, need_yn: &mut i32,
+              has_word_arg: &mut i32, has_day_arg: &mut i32, has_seed_arg: &mut i32) {
     for arg in std::env::args() {
         if *meet_word_argument == 1 {
             *word_argument = arg.clone();
@@ -38,6 +39,8 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
             *meet_seed_argument = 0;
         } else if arg == String::from("-w") || arg == String::from("--word") {
             *meet_word_argument = 1;
+            *has_word_arg = 1;
+            *need_yn = 0;
         } else if arg == String::from("-r") || arg == String::from("--random") {
             *random_mode = 1;
         } else if arg == String::from("-D") || arg == String::from("--difficult") {
@@ -46,8 +49,10 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
             *print_stats = 1;
         } else if arg == String::from("-d") || arg == String::from("--day") {
             *meet_day_argument = 1;
+            *has_day_arg = 1;
         } else if arg == String::from("-s") || arg == String::from("--seed") {
             *meet_seed_argument = 1;
+            *has_seed_arg = 1;
         }
     }
 }
@@ -151,32 +156,7 @@ fn check_difficult(difficult_on: &i32, fail_difficult: &mut i32, total_guessing_
 /// The main function for the Wordle game, implement your own logic here
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let is_tty = atty::is(atty::Stream::Stdout);
-
-    // if is_tty {
-    //     println!(
-    //         "I am in a tty. Please print {}!",
-    //         console::style("colorful characters").bold().blink().blue()
-    //     );
-    // } else {
-    //     println!("I am not in a tty. Please print according to test requirements!");
-    // }
-    //
-    // if is_tty {
-    //     print!("{}", console::style("Your name: ").bold().red());
-    //     io::stdout().flush().unwrap();
-    // }
-    // let mut line = String::new();
-    // io::stdin().read_line(&mut line)?;
-    // println!("Welcome to wordle, {}!", line.trim());
-
-    // example: print arguments
-    // print!("Command line arguments: ");
-    // for arg in std::env::args() {
-    //     print!("{} ", arg);
-    // }
-    // println!("");
-    // TODO: parse the arguments in `args`
-
+    
     let mut scores = HashMap::new();
     scores.insert('G', 10);
     scores.insert('Y', 5);
@@ -188,40 +168,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut total_success_guess_try = 0.0;
 
     let mut guess_frequency: HashMap<String, i32> = HashMap::new();
+    let mut meet_word_argument = 0;
+    let mut random_mode = 0;
+    let mut word_argument = String::new();
 
-    while true {
-        let mut meet_word_argument = 0;
-        let mut random_mode = 0;
-        let mut word_argument = String::new();
-        let mut keyboard_status: Vec<char> = vec!['X'; 26];
-        let mut difficult_on = 0;
-        let mut print_stats = 0;
-        let mut meet_day_argument = 0;
-        let mut day: usize = 0;
-        let mut meet_seed_argument = 0;
-        let mut seed: u64 = 0;
-        let mut need_input_answer = 0;
+    let mut difficult_on = 0;
+    let mut print_stats = 0;
+    let mut meet_day_argument = 0;
+    let mut day: usize = 0;
+    let mut meet_seed_argument = 0;
+    let mut seed: u64 = 0;
+    let mut need_input_answer = 0;
+    let mut need_yn = 1;
+    let mut has_word_arg = 0;
+    let mut has_day_arg = 0;
+    let mut has_seed_arg = 0;
+    parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument, &mut difficult_on,
+               &mut print_stats, &mut meet_day_argument, &mut day, &mut meet_seed_argument,
+               &mut seed, &mut need_yn, &mut has_word_arg, &mut has_day_arg, &mut has_seed_arg);
 
-        parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument, &mut difficult_on,
-                   &mut print_stats, &mut meet_day_argument, &mut day, &mut meet_seed_argument, &mut seed);
+    if meet_word_argument == 1 {
+        return Err(Box::from("Error! missing word argument"));
+    }
 
-        if meet_word_argument == 1 {
-            return Err(Box::from("Error! missing word argument"));
-        }
+    if meet_day_argument == 1 {
+        return Err(Box::from("Error! Missing day argument"));
+    }
 
-        if meet_day_argument == 1 {
-            return Err(Box::from("Error! Missing day argument"));
-        }
+    if meet_seed_argument == 1 {
+        return Err(Box::from("Error! Missing seed argument"));
+    }
 
-        /* Init random seed */
-        let mut words = FINAL.to_vec();
-        let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-        words.shuffle(&mut rng);
+    if has_word_arg == 1 && (random_mode == 1 || has_day_arg == 1 || has_seed_arg == 1) {
+        return Err(Box::from("Error! conflict arguments"));
+    }
+
+    if random_mode == 0 && (has_day_arg == 1 || has_seed_arg == 1) {
+        return Err(Box::from("Error! seed/day require random mode"));
+    }
+
+    /* Init random seed */
+    let mut words = FINAL.to_vec();
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    words.shuffle(&mut rng);
+
+
+    loop {
+        // keyboard_status = vec!['X'; 26];
 
         /* Get answer word */
         let mut answer_word = String::new();
         if random_mode == 1 {
             answer_word = String::from(words[day - 1]);
+            day += 1;
         } else {
             if word_argument == "" {
                 stdin().read_line(&mut word_argument).expect("Fail to read line");
@@ -234,6 +233,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut guessing_history: Vec<String> = Vec::new();
         let mut success = 0;
 
+        let mut keyboard_status: Vec<char> = vec!['X'; 26];
+
         let mut last_user_guess_status = vec!['X'; 5];
         let mut last_user_guess_word = vec!['X'; 5];
         let answer_chars: Vec<char> = answer_word.chars().collect();
@@ -244,7 +245,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         while total_guessing_count < 6 {
             let mut user_guess = String::new();
-            stdin().read_line(&mut user_guess).expect("Fail to readline");
+            if stdin().read_line(&mut user_guess).expect("Fail to readline") == 0 {
+                break;
+            }
             user_guess = user_guess.trim().to_lowercase();
             if user_guess.len() != 5 || !ACCEPTABLE.contains(&user_guess.as_str()) {
                 println!("INVALID");
@@ -319,11 +322,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("{}", word_stats.join(" "));
         }
 
-        if need_input_answer == 1 {
+        if need_yn == 1 {
             let mut yn = String::new();
             let result = io::stdin().read_line(&mut yn);
             match result {
-                Err(_) => panic!("Fail to read line!"),
+                // Err(_) => panic!("Fail to read line!"),
+                Err(_) => (),
                 Ok(0) => break,
                 Ok(_) => {
                     if yn.trim() == "N" {
