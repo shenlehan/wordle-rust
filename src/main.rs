@@ -9,10 +9,13 @@ use rand::SeedableRng;
 
 mod builtin_words;
 
-fn top_n_keys<K: Clone, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
+fn top_n_keys<K: Clone + Ord, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
     let mut pairs: Vec<(&K, &V)> = map.iter().collect();
 
-    pairs.sort_by(|a, b| b.1.cmp(a.1));
+    pairs.sort_by(|a, b| match b.1.cmp(a.1) {
+        std::cmp::Ordering::Equal => a.0.cmp(b.0),
+        other => other,
+    });
 
     pairs.into_iter()
       .take(n)
@@ -309,11 +312,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             /* print word frequency */
             let top_words = top_n_keys(&guess_frequency, 5);
+            let mut word_stats: Vec<String> = Vec::new();
             for word in top_words {
-                print!("{} {} ", word.to_uppercase(), guess_frequency.get(&word).unwrap());
-                io::stdout().flush().unwrap();
+                word_stats.push(format!("{} {}", word.to_uppercase(), guess_frequency.get(&word).unwrap()));
             }
-            println!("");
+            println!("{}", word_stats.join(" "));
         }
 
         if need_input_answer == 1 {
