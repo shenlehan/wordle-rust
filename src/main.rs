@@ -1,11 +1,13 @@
 use console;
 use std::io::{self, stdin, Write};
 use std::collections::HashMap;
+use std::fs::File;
 use std::hash::Hash;
 use log::info;
 use crate::builtin_words::{ACCEPTABLE, FINAL};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
+use serde_json::json;
 
 mod builtin_words;
 
@@ -39,16 +41,20 @@ fn parse_args(random_mode: &mut i32, word_argument: &mut String,
               seed: &mut u64,
               final_set: &mut String,
               acceptable_set: &mut String,
+              state_file: &mut String,
               need_yn: &mut i32, has_word_arg: &mut i32,
               has_day_arg: &mut i32, has_seed_arg: &mut i32,
               has_accept: &mut i32,
-              has_final: &mut i32) -> Result<(), Box<dyn std::error::Error>> {
+              has_final: &mut i32,
+              has_state_file: &mut i32,
+    ) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut meet_word_argument = 0;
     let mut meet_day_argument = 0;
     let mut meet_seed_argument = 0;
     let mut meet_f_argument = 0;
     let mut meet_accept_argument = 0;
+    let mut meet_state_argument = 0;
 
     for arg in std::env::args() {
         if meet_word_argument == 1 {
@@ -68,6 +74,10 @@ fn parse_args(random_mode: &mut i32, word_argument: &mut String,
             *acceptable_set = arg.clone();
             *has_accept = 1;
             meet_accept_argument = 0;
+        } else if meet_state_argument == 1 {
+            *state_file = arg.clone();
+            *has_state_file = 1;
+            meet_state_argument = 0;
         } else if arg == String::from("-w") || arg == String::from("--word") {
             *has_word_arg = 1;
             *need_yn = 0;
@@ -88,6 +98,8 @@ fn parse_args(random_mode: &mut i32, word_argument: &mut String,
             meet_f_argument = 1;
         } else if arg == String::from("-a") || arg == String::from("--acceptable-set") {
             meet_accept_argument = 1;
+        } else if arg == String::from("-S") || arg == String::from("--state") {
+            meet_state_argument = 1;
         }
     }
 
@@ -109,6 +121,10 @@ fn parse_args(random_mode: &mut i32, word_argument: &mut String,
 
     if meet_f_argument == 1 {
         return Err(Box::from("Error! Missing final-set argument"));
+    }
+
+    if meet_state_argument == 1 {
+        return Err(Box::from("Error! Missing state argument"));
     }
 
     if *has_word_arg == 1 && (*random_mode == 1 || *has_day_arg == 1 || *has_seed_arg == 1) {
@@ -217,6 +233,14 @@ fn check_difficult(difficult_on: &i32, fail_difficult: &mut i32, total_guessing_
     }
 }
 
+fn dump_json_file(
+    game_state: &serde_json::Value,
+    state_file: &String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let file = File::create(state_file.as_str())?;
+    serde_json::to_writer_pretty(file, &game_state)?;
+    Ok(())
+}
 
 /// The main function for the Wordle game, implement your own logic here
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -244,6 +268,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut final_set = String::new();
     let mut acceptable_set = String::new();
 
+    let mut has_state_file = 0;
+
     let mut need_input_answer = 0;
     let mut need_yn = 1;
     let mut has_word_arg = 0;
@@ -251,12 +277,64 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut has_seed_arg = 0;
     let mut has_final = 0;
     let mut has_accept = 0;
+    let mut state_file = String::new();
 
     parse_args(&mut random_mode, &mut word_argument, &mut difficult_on,
                &mut print_stats, &mut day, &mut seed,
                &mut final_set, &mut acceptable_set,
+               &mut state_file,
                &mut need_yn, &mut has_word_arg, &mut has_day_arg,
-               &mut has_seed_arg, &mut has_accept, &mut has_final)?;
+               &mut has_seed_arg, &mut has_accept, &mut has_final, &mut has_state_file)?;
+
+    let mut game_state = if has_state_file == 1 {
+        let content = std::fs::read_to_string(state_file.as_str())?;
+        let value: serde_json::Value = serde_json::from_str(&content)?;
+        if value.as_object().map(|object| object.is_empty()).unwrap_or(false) {
+            json!({
+                "total_rounds": 0,
+                "games": []
+            })
+        } else {
+            value
+        }
+    } else {
+        json!({
+            "total_rounds": 0,
+            "games": []
+        })
+    };
+
+    if has_state_file == 1 {
+        let games = game_state["games"]
+            .as_array()
+            .ok_or("Error! invalid state games")?;
+        total_game_cnt = games.len() as f32;
+        for game in games {
+            let answer = game["answer"]
+                .as_str()
+                .ok_or("Error! invalid state answer")?
+                .to_lowercase();
+            let guesses = game["guesses"]
+                .as_array()
+                .ok_or("Error! invalid state guesses")?;
+            for guess in guesses {
+                let guess = guess
+                    .as_str()
+                    .ok_or("Error! invalid state guess")?
+                    .to_lowercase();
+                *guess_frequency.entry(guess).or_insert(0) += 1;
+            }
+            if guesses
+                .last()
+                .and_then(|guess| guess.as_str())
+                .map(|guess| guess.to_lowercase() == answer)
+                .unwrap_or(false)
+            {
+                success_game_cnt += 1.0;
+                total_success_guess_try += guesses.len() as f64;
+            }
+        }
+    }
 
     /* Create FINAL and ACCEPTABLE source */
     let mut final_words: Vec<String> = Vec::new();
@@ -391,6 +469,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 word_stats.push(format!("{} {}", word.to_uppercase(), guess_frequency.get(&word).unwrap()));
             }
             println!("{}", word_stats.join(" "));
+        }
+
+        /* Dump json file/state */
+        if has_state_file == 1 {
+            let saved_guesses: Vec<String> = guessing_history
+                .iter()
+                .map(|guess| guess.to_uppercase())
+                .collect();
+            let game_record = json!({
+                "answer": answer_word.to_uppercase(),
+                "guesses": saved_guesses
+            });
+
+            let rounds = {
+                let games = game_state["games"]
+                    .as_array_mut()
+                    .ok_or("Error! invalid state games")?;
+                games.push(game_record);
+                games.len()
+            };
+            game_state["total_rounds"] = json!(rounds);
+
+            dump_json_file(&game_state, &state_file)?;
         }
 
         if need_yn == 1 {
