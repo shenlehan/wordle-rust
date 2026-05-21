@@ -23,10 +23,26 @@ fn top_n_keys<K: Clone + Ord, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
       .collect()
 }
 
+fn read_word_list(path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let content = std::fs::read_to_string(path)?;
+    let words = content
+      .lines()
+      .map(|line| line.trim().to_lowercase())
+      .collect();
+
+    Ok(words)
+}
+
 fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument: &mut String,
-              difficult_on: &mut i32, print_stats: &mut i32, meet_day_argument: &mut i32, day: &mut usize,
-              meet_seed_argument: &mut i32, seed: &mut u64, need_yn: &mut i32,
-              has_word_arg: &mut i32, has_day_arg: &mut i32, has_seed_arg: &mut i32) {
+              difficult_on: &mut i32, print_stats: &mut i32,
+              meet_day_argument: &mut i32, day: &mut usize,
+              meet_seed_argument: &mut i32, seed: &mut u64,
+              meet_f_argument: &mut i32, final_set: &mut String,
+              meet_accept_argument: &mut i32, acceptable_set: &mut String,
+              need_yn: &mut i32, has_word_arg: &mut i32,
+              has_day_arg: &mut i32, has_seed_arg: &mut i32,
+              has_accept: &mut i32,
+              has_final: &mut i32) {
     for arg in std::env::args() {
         if *meet_word_argument == 1 {
             *word_argument = arg.clone();
@@ -37,6 +53,14 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
         } else if *meet_seed_argument == 1 {
             *seed = arg.clone().parse().unwrap();
             *meet_seed_argument = 0;
+        } else if *meet_f_argument == 1 {
+            *meet_f_argument = 0;
+            *final_set = arg.clone();
+            *has_final = 1;
+        } else if *meet_accept_argument == 1 {
+            *meet_accept_argument = 0;
+            *acceptable_set = arg.clone();
+            *has_accept = 1;
         } else if arg == String::from("-w") || arg == String::from("--word") {
             *meet_word_argument = 1;
             *has_word_arg = 1;
@@ -53,6 +77,10 @@ fn parse_args(meet_word_argument: &mut i32, random_mode: &mut i32, word_argument
         } else if arg == String::from("-s") || arg == String::from("--seed") {
             *meet_seed_argument = 1;
             *has_seed_arg = 1;
+        } else if arg == String::from("-f") || arg == String::from("--final-set") {
+            *meet_f_argument = 1;
+        } else if arg == String::from("-a") || arg == String::from("--acceptable-set") {
+            *meet_accept_argument = 1;
         }
     }
 }
@@ -156,7 +184,7 @@ fn check_difficult(difficult_on: &i32, fail_difficult: &mut i32, total_guessing_
 /// The main function for the Wordle game, implement your own logic here
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let is_tty = atty::is(atty::Stream::Stdout);
-    
+
     let mut scores = HashMap::new();
     scores.insert('G', 10);
     scores.insert('Y', 5);
@@ -178,17 +206,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut day: usize = 0;
     let mut meet_seed_argument = 0;
     let mut seed: u64 = 0;
+    let mut final_set = String::new();
+    let mut meet_f_argument = 0;
+    let mut acceptable_set = String::new();
+    let mut meet_accept_argument = 0;
+
     let mut need_input_answer = 0;
     let mut need_yn = 1;
     let mut has_word_arg = 0;
     let mut has_day_arg = 0;
     let mut has_seed_arg = 0;
+    let mut has_final = 0;
+    let mut has_accept = 0;
+
     parse_args(&mut meet_word_argument, &mut random_mode, &mut word_argument, &mut difficult_on,
-               &mut print_stats, &mut meet_day_argument, &mut day, &mut meet_seed_argument,
-               &mut seed, &mut need_yn, &mut has_word_arg, &mut has_day_arg, &mut has_seed_arg);
+               &mut print_stats, &mut meet_day_argument, &mut day, &mut meet_seed_argument, &mut seed,
+               &mut meet_f_argument, &mut final_set, &mut meet_accept_argument, &mut acceptable_set,
+               &mut need_yn, &mut has_word_arg, &mut has_day_arg, &mut has_seed_arg, &mut has_accept, &mut has_final);
 
     if meet_word_argument == 1 {
-        return Err(Box::from("Error! missing word argument"));
+        return Err(Box::from("Error! Missing word argument"));
     }
 
     if meet_day_argument == 1 {
@@ -199,6 +236,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(Box::from("Error! Missing seed argument"));
     }
 
+    if meet_accept_argument == 1 {
+        return Err(Box::from("Error! Missing acceptable-set argument"));
+    }
+
+    if meet_f_argument == 1 {
+        return Err(Box::from("Error! Missing final-set argument"));
+    }
+
     if has_word_arg == 1 && (random_mode == 1 || has_day_arg == 1 || has_seed_arg == 1) {
         return Err(Box::from("Error! conflict arguments"));
     }
@@ -207,19 +252,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(Box::from("Error! seed/day require random mode"));
     }
 
-    /* Init random seed */
-    let mut words = FINAL.to_vec();
-    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
-    words.shuffle(&mut rng);
+    /* Create FINAL and ACCEPTABLE source */
+    let mut final_words: Vec<String> = Vec::new();
+    if has_final == 1 {
+        final_words = read_word_list(final_set.as_str())?;
+        final_words.sort();
+    } else {
+        final_words = FINAL.iter().map(|w| w.to_string()).collect();
+    }
 
+    let mut acceptable_words: Vec<String> = Vec::new();
+    if has_accept == 1 {
+        acceptable_words = read_word_list(acceptable_set.as_str())?;
+        acceptable_words.sort();
+    } else {
+        acceptable_words = ACCEPTABLE.iter().map(|w| w.to_string()).collect();
+    }
+
+    /* Check FINAL & ACCEPTABLE coherence */
+    for word in final_words.iter() {
+        if !acceptable_words.contains(word) {
+            return Err(Box::from("Error! FINAL is not a subset of ACCEPTABLE!"));
+        }
+    }
+
+    /* Init random seed */
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    final_words.shuffle(&mut rng);
 
     loop {
-        // keyboard_status = vec!['X'; 26];
-
         /* Get answer word */
         let mut answer_word = String::new();
         if random_mode == 1 {
-            answer_word = String::from(words[day - 1]);
+            answer_word = String::from(final_words[day - 1].clone());
             day += 1;
         } else {
             if word_argument == "" {
@@ -249,7 +314,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 break;
             }
             user_guess = user_guess.trim().to_lowercase();
-            if user_guess.len() != 5 || !ACCEPTABLE.contains(&user_guess.as_str()) {
+            if user_guess.len() != 5 || !acceptable_words.contains(&user_guess) {
                 println!("INVALID");
                 continue;
             }
