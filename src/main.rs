@@ -4,48 +4,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::Hash;
 use log::info;
-use crate::builtin_words::{ACCEPTABLE, FINAL};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use serde_json::json;
-
-mod builtin_words;
-
-struct GameConfig {
-    random: bool,
-    difficult: bool,
-    stats: bool,
-    day: usize,
-    seed: u64,
-    final_set: String,
-    acceptable_set: String,
-    state: String,
-    word: String,
-    has_word_arg: bool,
-    config: String
-}
-
-struct CliOptions {
-
-}
-
-impl GameConfig {
-    fn new(
-        random: bool,
-        difficult: bool,
-        stats: bool,
-        day: usize,
-        seed: u64,
-        final_set: String,
-        acceptable_set: String,
-        state: String,
-        word: String,
-        has_word_arg: bool,
-        config: String
-    ) -> GameConfig {
-        GameConfig { random, difficult, stats, day, seed, final_set, acceptable_set, state, word, has_word_arg, config}
-    }
-}
+use wordle::builtin_words::*;
+use wordle::config::*;
 
 fn top_n_keys<K: Clone + Ord, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
     let mut pairs: Vec<(&K, &V)> = map.iter().collect();
