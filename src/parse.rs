@@ -100,9 +100,24 @@ pub fn parse_args(config: &mut GameConfig) -> Result<(), Box<dyn std::error::Err
 }
 
 pub fn parse_config_file(
-    config_file_path: &String,
     config: &mut GameConfig,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut config_file_path = String::new();
+    let mut meet_c = false;
+    for arg in std::env::args() {
+        if meet_c {
+            config_file_path = arg.clone();
+            meet_c = false;
+        }
+        if arg == "-c" || arg == "--config" {
+            meet_c = true;
+        }
+    }
+
+    if meet_c {
+        return Err(Box::from("Error! Missing config file path"));
+    }
+
     if config_file_path == "" {
         return Ok(());
     }
