@@ -1,3 +1,9 @@
 pub mod builtin_words;
 pub mod config;
-pub mod arg_parse;
+pub mod parse;
+pub mod engine;
+pub mod words;
+pub mod stats;
+pub mod utilities;
+pub mod state;
+pub mod game;
