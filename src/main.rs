@@ -9,6 +9,7 @@ use rand::SeedableRng;
 use serde_json::json;
 use wordle::builtin_words::*;
 use wordle::config::*;
+use wordle::arg_parse::*;
 
 fn top_n_keys<K: Clone + Ord, V: Ord>(map: &HashMap<K, V>, n: usize) -> Vec<K> {
     let mut pairs: Vec<(&K, &V)> = map.iter().collect();
@@ -32,105 +33,6 @@ fn read_word_list(path: &str) -> Result<Vec<String>, Box<dyn std::error::Error>>
       .collect();
 
     Ok(words)
-}
-
-fn parse_args(config: &mut GameConfig) -> Result<(), Box<dyn std::error::Error>> {
-    let mut meet_word_argument = 0;
-    let mut meet_day_argument = 0;
-    let mut meet_seed_argument = 0;
-    let mut meet_f_argument = 0;
-    let mut meet_accept_argument = 0;
-    let mut meet_state_argument = 0;
-    let mut meet_config_argument = 0;
-
-    let mut has_word_arg = 0;
-    let mut random_mode = 0;
-    let mut has_day_arg = 0;
-    let mut has_seed_arg = 0;
-
-    for arg in std::env::args() {
-        if meet_word_argument == 1 {
-            config.word = arg.clone();
-            config.has_word_arg = true;
-            meet_word_argument = 0;
-        } else if meet_day_argument == 1 {
-            config.day = arg.clone().parse().unwrap();
-            meet_day_argument = 0;
-        } else if meet_seed_argument == 1 {
-            config.seed = arg.clone().parse().unwrap();
-            meet_seed_argument = 0;
-        } else if meet_f_argument == 1 {
-            config.final_set = arg.clone();
-            meet_f_argument = 0;
-        } else if meet_accept_argument == 1 {
-            config.acceptable_set = arg.clone();
-            meet_accept_argument = 0;
-        } else if meet_state_argument == 1 {
-            config.state = arg.clone();
-            meet_state_argument = 0;
-        } else if meet_config_argument == 1 {
-            config.config = arg.clone();
-            meet_config_argument = 0;
-        } else if arg == String::from("-w") || arg == String::from("--word") {
-            has_word_arg = 1;
-            meet_word_argument = 1;
-        } else if arg == String::from("-r") || arg == String::from("--random") {
-            random_mode = 1;
-            config.random = true;
-        } else if arg == String::from("-D") || arg == String::from("--difficult") {
-            config.difficult = true;
-        } else if arg == String::from("-t") || arg == String::from("--stats") {
-            config.stats = true;
-        } else if arg == String::from("-d") || arg == String::from("--day") {
-            has_day_arg = 1;
-            meet_day_argument = 1;
-        } else if arg == String::from("-s") || arg == String::from("--seed") {
-            has_seed_arg = 1;
-            meet_seed_argument = 1;
-        } else if arg == String::from("-f") || arg == String::from("--final-set") {
-            meet_f_argument = 1;
-        } else if arg == String::from("-a") || arg == String::from("--acceptable-set") {
-            meet_accept_argument = 1;
-        } else if arg == String::from("-S") || arg == String::from("--state") {
-            meet_state_argument = 1;
-        } else if arg == String::from("-c") || arg == String::from("--config") {
-            meet_config_argument = 1;
-        }
-    }
-
-    if meet_word_argument == 1 {
-        return Err(Box::from("Error! Missing word argument"));
-    }
-
-    if meet_day_argument == 1 {
-        return Err(Box::from("Error! Missing day argument"));
-    }
-
-    if meet_seed_argument == 1 {
-        return Err(Box::from("Error! Missing seed argument"));
-    }
-
-    if meet_accept_argument == 1 {
-        return Err(Box::from("Error! Missing acceptable-set argument"));
-    }
-
-    if meet_f_argument == 1 {
-        return Err(Box::from("Error! Missing final-set argument"));
-    }
-
-    if meet_state_argument == 1 {
-        return Err(Box::from("Error! Missing state argument"));
-    }
-
-    if has_word_arg == 1 && (random_mode == 1 || has_day_arg == 1 || has_seed_arg == 1) {
-        return Err(Box::from("Error! conflict arguments"));
-    }
-
-    if random_mode == 0 && (has_day_arg == 1 || has_seed_arg == 1) {
-        return Err(Box::from("Error! seed/day require random mode"));
-    }
-
-    Ok(())
 }
 
 fn print_result(user_status: &Vec<char>, keyboard_status: &Vec<char>) {
@@ -253,12 +155,63 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut guess_frequency: HashMap<String, i32> = HashMap::new();
 
-    let mut cli_config = GameConfig::new(false, false, false,
+    let mut config = GameConfig::new(false, false, false,
                                          1, 0, "".to_string(),
                                          "".to_string(), "".to_string(), "".to_string(), false, "".to_string());
 
-    parse_args(&mut cli_config)?;
+    let mut file_config_path = String::new();
+    let mut meet_c = false;
+    for arg in std::env::args() {
+        if meet_c {
+            file_config_path = arg.clone();
+            meet_c = false;
+        }
+        if arg == "-c" || arg == "--config" {
+            // file_config_path = arg.clone();
+            // break;
+            meet_c = true;
+        }
+    }
 
+    if meet_c {
+        return Err(Box::from("Error! Missing config file path"));
+    }
+
+    if file_config_path != "" {
+        let content = std::fs::read_to_string(file_config_path.as_str())?;
+        let value: serde_json::Value = serde_json::from_str(&content)?;
+
+        if let Some(random) = value["random"].as_bool() {
+            config.random = random;
+        }
+        if let Some(difficult) = value["difficult"].as_bool() {
+            config.difficult = difficult;
+        }
+        if let Some(stats) = value["stats"].as_bool() {
+            config.stats = stats;
+        }
+        if let Some(day) = value["day"].as_u64() {
+            config.day = day as usize;
+        }
+        if let Some(seed) = value["seed"].as_u64() {
+            config.seed = seed;
+        }
+        if let Some(final_set) = value["final_set"].as_str() {
+            config.final_set = final_set.to_string();
+        }
+        if let Some(acceptable_set) = value["acceptable_set"].as_str() {
+            config.acceptable_set = acceptable_set.to_string();
+        }
+        if let Some(state) = value["state"].as_str() {
+            config.state = state.to_string();
+        }
+        if let Some(word) = value["word"].as_str() {
+            config.has_word_arg = true;
+            config.word = word.to_string();
+        }
+    }
+
+    parse_args(&mut config)?;
     // if has_config_file == 1 {
     //     let content = std::fs::read_to_string(config_file.as_str())?;
     //     let config: serde_json::Value = serde_json::from_str(&content)?;
@@ -268,8 +221,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     }
     // }
 
-    let mut game_state = if cli_config.state != "".to_string() {
-        let content = std::fs::read_to_string(cli_config.state.as_str())?;
+    let mut game_state = if config.state != "".to_string() {
+        let content = std::fs::read_to_string(config.state.as_str())?;
         let value: serde_json::Value = serde_json::from_str(&content)?;
         if value.as_object().map(|object| object.is_empty()).unwrap_or(false) {
             json!({
@@ -286,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
     };
 
-    if cli_config.state != "".to_string() {
+    if config.state != "".to_string() {
         let games = game_state["games"]
             .as_array()
             .ok_or("Error! invalid state games")?;
@@ -320,16 +273,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     /* Create FINAL and ACCEPTABLE source */
     let mut final_words: Vec<String> = Vec::new();
-    if cli_config.final_set != "".to_string() {
-        final_words = read_word_list(cli_config.final_set.as_str())?;
+    if config.final_set != "".to_string() {
+        final_words = read_word_list(config.final_set.as_str())?;
         final_words.sort();
     } else {
         final_words = FINAL.iter().map(|w| w.to_string()).collect();
     }
 
     let mut acceptable_words: Vec<String> = Vec::new();
-    if cli_config.acceptable_set != "".to_string() {
-        acceptable_words = read_word_list(cli_config.acceptable_set.as_str())?;
+    if config.acceptable_set != "".to_string() {
+        acceptable_words = read_word_list(config.acceptable_set.as_str())?;
         acceptable_words.sort();
     } else {
         acceptable_words = ACCEPTABLE.iter().map(|w| w.to_string()).collect();
@@ -343,20 +296,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     /* Init random seed */
-    let mut rng = rand::rngs::StdRng::seed_from_u64(cli_config.seed);
+    let mut rng = rand::rngs::StdRng::seed_from_u64(config.seed);
     final_words.shuffle(&mut rng);
 
     loop {
         /* Get answer word */
-        let answer_word = if cli_config.random == true {
-            if cli_config.day == 0 || cli_config.day > final_words.len() {
+        let answer_word = if config.random == true {
+            if config.day == 0 || config.day > final_words.len() {
                 return Err(Box::from("Error! day out of range"));
             }
-            let word = String::from(final_words[cli_config.day - 1].clone());
-            cli_config.day += 1;
+            let word = String::from(final_words[config.day - 1].clone());
+            config.day += 1;
             word
-        } else if cli_config.has_word_arg {
-            cli_config.word.trim().to_lowercase()
+        } else if config.has_word_arg {
+            config.word.trim().to_lowercase()
         } else {
             let mut answer_input = String::new();
             if stdin().read_line(&mut answer_input)? == 0 {
@@ -402,7 +355,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             make_yellow(&mut user_status, &mut colored, &guess_chars, &answer_count);
 
             let mut fail_difficult = 0;
-            check_difficult(&cli_config.difficult, &mut fail_difficult, &total_guessing_count, &last_user_guess_status, &last_user_guess_word,
+            check_difficult(&config.difficult, &mut fail_difficult, &total_guessing_count, &last_user_guess_status, &last_user_guess_word,
                             &user_status, &guess_chars);
 
             /* Failed difficult mode or difficult mode is not on */
@@ -444,7 +397,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // println!("total: {total_game_cnt}, success: {success_game_cnt}");
 
         /* print statistics */
-        if cli_config.stats == true {
+        if config.stats == true {
             /* print basic */
             let x = if success_game_cnt == 0.0 { 0.0 } else { total_success_guess_try / success_game_cnt as f64 };
             println!("{success_game_cnt} {} {:.2}", total_game_cnt - success_game_cnt, x);
@@ -459,7 +412,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         /* Dump json file/state */
-        if cli_config.state != "".to_string() {
+        if config.state != "".to_string() {
             let saved_guesses: Vec<String> = guessing_history
                 .iter()
                 .map(|guess| guess.to_uppercase())
@@ -478,10 +431,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             game_state["total_rounds"] = json!(rounds);
 
-            dump_json_file(&game_state, &cli_config.state)?;
+            dump_json_file(&game_state, &config.state)?;
         }
 
-        if cli_config.has_word_arg {
+        if config.has_word_arg {
             break;
         } else {
             let mut yn = String::new();
