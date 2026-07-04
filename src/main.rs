@@ -56,15 +56,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
 
         let result = play_one_round(&answer_word, &acceptable_words, &config, &scores)?;
-
-        stats.total_game_cnt += 1.0;
-        stats.success_game_cnt += if result.success { 1.0 } else { 0.0 };
-        if result.success {
-            stats.total_success_guess_try += result.guess_count as f64;
-        }
-        for guess in result.guesses.iter() {
-            *stats.guess_frequency.entry(guess.clone()).or_insert(0) += 1;
-        }
+        update_stats(&mut stats, &result);
 
         // if !is_tty {
         if !result.success {
